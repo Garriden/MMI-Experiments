@@ -35,8 +35,8 @@ TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
 #define TS_MAXX 900
 #define TS_MINY 70
 #define TS_MAXY 920
-#define MINPRESSURE 100
-#define MAXPRESSURE 10000
+#define MINPRESSURE 10
+#define MAXPRESSURE 1000
 
 // Button.
 int btnX = 40, btnY = 150, btnW = 160, btnH = 50;
@@ -47,9 +47,10 @@ long total_trials = 0;
 long hits_stage1 = 0;
 long hits_stage2 = 0;
 long hits_stage3 = 0;
+long releaseCount = 0;
 
 void setup() {
-  Serial.begin(9600);
+  //Serial.begin(9600); // Debug.
 
   /////////////////////
   // Initialize TFT
@@ -64,10 +65,10 @@ void setup() {
   tft.fillScreen(TFT_BLACK);
 
   // 3. Print text (Note: X max is now 240, Y max is 320)
-  tft.setCursor(30, 60);           // Moved in slightly from the left
+  tft.setCursor(30, 30);           // Moved in slightly from the left
   tft.setTextColor(TFT_YELLOW);    // Changed color just for fun
-  tft.setTextSize(3);
-  tft.println("Holiiiiiii");
+  tft.setTextSize(2);
+  tft.println("PRNG Markov 3");
 
   drawButton(false); // Draw the initial button
 
@@ -78,12 +79,10 @@ void setup() {
   // Seed the random generator using noise from an unconnected analog pin
   randomSeed(analogRead(0)); // PRNG
 
-  Serial.println("--- Mind-Matter Interaction: Markov Chain ---");
-  Serial.println("Focus on reaching 'Target' (1) at Stage 3.");
-  Serial.println("Send any character to start a trial, or 'q' for results.\n");
-  
-  // Print CSV Header to Serial
-  Serial.println("Trial,Stage1,Stage2,Stage3");
+  //Serial.println("--- Mind-Matter Interaction: Markov Chain ---");
+  //Serial.println("Focus on reaching 'Target' (1) at Stage 3.");
+  //Serial.println("Send any character to start a trial, or 'q' for results.\n");
+  //Serial.println("Trial,Stage1,Stage2,Stage3");
 }
 
 
@@ -93,54 +92,70 @@ void loop() {
   pinMode(XM, OUTPUT);
 
   bool isPressing = (p.z > MINPRESSURE && p.z < MAXPRESSURE);
+  //Serial.print("isPressing: ");
+  //Serial.println((int)p.z);
 
-  if (isPressing) {
+  if(isPressing) {
     // Convert raw touch to screen pixels
     int pixel_x = map(p.x, TS_MINX, TS_MAXX, 0, 240);
     int pixel_y = map(p.y, TS_MINY, TS_MAXY, 0, 320);
 
     // --- PRINT COORDINATES ---
     // Clear a small area at the top to show coords
-    tft.fillRect(0, 290, 240, 30, TFT_BLACK); 
-    tft.setCursor(50, 300);
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextSize(2);
-    tft.print("X:"); tft.print(pixel_x);
-    tft.print(" Y:"); tft.print(pixel_y);
+    //tft.fillRect(0, 290, 240, 30, TFT_BLACK); 
+    //tft.setCursor(50, 300);
+    //tft.setTextColor(TFT_WHITE);
+    //tft.setTextSize(2);
+    //tft.print("X:"); tft.print(pixel_x);
+    //tft.print(" Y:"); tft.print(pixel_y);
 
     // Also print RAW values to Serial for your calibration
-    Serial.print("Raw X: "); Serial.print(p.x);
-    Serial.print(" | Raw Y: "); Serial.println(p.y);
+    //Serial.print("Raw X: "); Serial.print(p.x);
+    //Serial.print(" | Raw Y: "); Serial.println(p.y);
 
     // --- BUTTON LOGIC ---
     bool insideButton = (pixel_x >= 75 && pixel_x <= 150) && 
                         (pixel_y >= 50 && pixel_y <= 290);
 
-    if (insideButton && !lastPressState) {
-      drawButton(true);   // Change to Green ONLY ONCE
-      lastPressState = true;
-      wasTouched = true;
-    }
-  } 
-  else {
-    if (lastPressState) {
-      // This happens the exact moment you RELEASE
-      drawButton(false);  // Change back to Red
-      lastPressState = false;
-      
-      if (wasTouched) {
-        runTrial();
-        Serial.println("Release Action Triggered!");
-        wasTouched = false; 
+    if(insideButton) {
+      releaseCount = 0;
+      if(!lastPressState) {
+        drawButton(true);   // Change to Green ONLY ONCE
+        lastPressState = true;
+        wasTouched = true;
       }
     }
+    
+  } else { // NOT touching
+
+    // Cover false releases.
+    ++releaseCount;
+    if(releaseCount > 10) releaseCount = 10; // Cover overflow.
+  
+    if(releaseCount > 2) {
+
+      if(lastPressState) { // last time was touched.
+        // This happens the exact moment you RELEASE
+        drawButton(false);  // Change back to Red
+        lastPressState = false;
+        
+        if (wasTouched) {
+          runTrial();
+          //Serial.println("Release Action Triggered!");
+          wasTouched = false; 
+        }
+      }
+
+    }
   }
+
+  delay(50);
 }
 
 
 
 void drawButton(bool pressed) {
-  int color = pressed ? TFT_GREEN : TFT_RED;
+  int color = pressed ? TFT_NAVY : TFT_BLUE;
   tft.fillRect(btnX, btnY, btnW, btnH, color);
   tft.drawRect(btnX, btnY, btnW, btnH, TFT_WHITE); // Border
   tft.setCursor(btnX + 25, btnY + 15);
@@ -170,7 +185,7 @@ void runTrial() {
   // Instead of clearing the whole screen, we just clear the top result area
   tft.fillRect(0, 0, 240, 140, TFT_BLACK); 
   
-  tft.setCursor(60, 40);
+  tft.setCursor(40, 20);
   tft.setTextSize(3);
   tft.setTextColor(TFT_WHITE);
   tft.print("Trial: "); tft.println(total_trials);
@@ -186,10 +201,10 @@ void runTrial() {
   }
 
   // Log the path to Serial for your data collection
-  Serial.print("Trial "); Serial.print(total_trials);
-  Serial.print(": "); Serial.print(s1); 
-  Serial.print("->"); Serial.print(s2); 
-  Serial.print("->"); Serial.println(s3);
+  //Serial.print("Trial "); Serial.print(total_trials);
+  //Serial.print(": "); Serial.print(s1); 
+  //Serial.print("->"); Serial.print(s2); 
+  //Serial.print("->"); Serial.println(s3);
 }
 
 /*
@@ -207,14 +222,14 @@ void printSummary() {
   float p2 = (hits_stage2 * 100.0) / total_trials;
   float p3 = (hits_stage3 * 100.0) / total_trials;
 
-  Serial.println("\n================ SUMMARY ================");
-  Serial.print("Total Trials:   "); Serial.println(total_trials);
-  Serial.print("Stage 1 Hits:   "); Serial.print(p1); Serial.println("%");
-  Serial.print("Stage 2 Hits:   "); Serial.print(p2); Serial.println("%");
-  Serial.print("Stage 3 Hits:   "); Serial.print(p3); Serial.println("%");
-  Serial.println("=========================================");
+  //Serial.println("\n================ SUMMARY ================");
+  //Serial.print("Total Trials:   "); Serial.println(total_trials);
+  //Serial.print("Stage 1 Hits:   "); Serial.print(p1); Serial.println("%");
+  //Serial.print("Stage 2 Hits:   "); Serial.print(p2); Serial.println("%");
+  //Serial.print("Stage 3 Hits:   "); Serial.print(p3); Serial.println("%");
+  //Serial.println("=========================================");
   
   if (p3 >= 55.0) {
-    Serial.println("!!!!! Hit rate is notably above chance !!!!!");
+    //Serial.println("!!!!! Hit rate is notably above chance !!!!!");
   }
 }
