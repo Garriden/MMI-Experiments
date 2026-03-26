@@ -26,6 +26,11 @@
 #include "Adafruit_GFX.h"    // Core graphics library
 #include "MCUFRIEND_kbv.h"   // Hardware-specific library
 
+#include <SPI.h>
+#include <SD.h>
+
+const int chipSelect = 10;
+File dataFile;
 MCUFRIEND_kbv tft;
 
 const int XP=6, XM=A2, YP=A1, YM=7; 
@@ -83,6 +88,21 @@ void setup() {
   //Serial.println("Focus on reaching 'Target' (1) at Stage 3.");
   //Serial.println("Send any character to start a trial, or 'q' for results.\n");
   //Serial.println("Trial,Stage1,Stage2,Stage3");
+  if (!SD.begin(chipSelect)) {
+    tft.setTextColor(TFT_WHITE);
+    tft.println("SD Init Failed!");
+  } else {
+    // Create header if file doesn't exist
+    if (!SD.exists("trials.csv")) {
+      dataFile = SD.open("trials.csv", FILE_WRITE);
+      if (dataFile) {
+        //dataFile.println("Trial,Stage1,Stage2,Stage3");
+        dataFile.close();
+      }
+    }
+  }
+
+
 }
 
 
@@ -198,6 +218,20 @@ void runTrial() {
   } else {
     tft.setTextColor(TFT_RED);
     tft.print("0"); // LOSS
+  }
+
+
+  // --- SD CARD LOGGING ---
+  dataFile = SD.open("trials.csv", FILE_WRITE);
+  if(dataFile) {
+    dataFile.print(total_trials);
+    dataFile.print(",");
+    dataFile.print(s1);
+    dataFile.print(",");
+    dataFile.print(s2);
+    dataFile.print(",");
+    dataFile.println(s3);
+    dataFile.close(); // Save and close
   }
 
   // Log the path to Serial for your data collection
