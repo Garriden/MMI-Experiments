@@ -27,6 +27,7 @@ bool isFinished = false;
 bool wasTouched = false;
 bool lastPressState = false;
 bool finalResultsAlreadyPrinted = false;
+bool showingGraph = true;
 
 long total_trials = 0;
 long hits_stage1 = 0;
@@ -89,8 +90,32 @@ void loop() {
   int pixel_y = map(p.y, TS_MINY, TS_MAXY, 0, 320);
 
   if(isFinished) {
-      printSummary();
-      if (pixel_x >= 190 && pixel_x <= 243 && pixel_y >= 80 && pixel_y <= 250) reboot();
+      
+    
+      // Logic for the TOGGLE (Orange Button)
+      if(pixel_x >= 190 && pixel_x <= 250 && pixel_y >= 30 && pixel_y <= 90 && isPressing) {
+        if(!lastPressState) { // Only trigger once per press
+          showingGraph = !showingGraph; // Flip the state
+          
+          if(showingGraph) {
+            drawGraph(fileName);
+          } else {
+            finalResultsAlreadyPrinted = false; // Allow printSummary to redraw
+            printSummary();
+          }
+          
+          lastPressState = true; 
+          delay(200); // debounce to prevent jumping
+        }
+      } else if (pixel_x >= 190 && pixel_x <= 250 && pixel_y >= 120 && pixel_y <= 250) {
+        reboot(); // Restart button.
+      }
+
+      // If we aren't pressing anything, reset the press state
+      if(!isPressing) {
+        lastPressState = false;
+      }
+
   } else {
     if(isPressing) {
       // Logic for summary button check
@@ -147,7 +172,7 @@ void runTrial() {
   tft.setCursor(50, 20);
   tft.setTextSize(3);
   tft.setTextColor(TFT_WHITE);
-  tft.print(F("Trials: ")); tft.println(total_trials);
+  tft.print(F("Trial: ")); tft.println(total_trials);
 
   tft.setCursor(100, 75);
   tft.setTextSize(6);
@@ -181,8 +206,8 @@ void printSummary() {
 
   tft.setTextColor(TFT_WHITE);
   tft.setCursor(20, 130);
-  tft.print(F("Hits: ")); 
-  tft.setTextColor(p3 >= 50.0 ? TFT_GREEN : TFT_RED);
+  tft.print(F("Hits: "));
+  tft.setTextColor(p3 > 50.0 ? TFT_GREEN : TFT_RED);
   tft.print(p3, 1); tft.println('%');
 
   tft.setTextColor(TFT_WHITE);
@@ -202,7 +227,85 @@ void printSummary() {
   tft.setTextSize(1);
   tft.print(F("File saved: "));
   tft.print(fileName);
+
+  drawSummaryButton();
+
+  delay(100);
 }
+
+
+void drawGraph(char* filename) {
+  showingGraph = true; 
+  finalResultsAlreadyPrinted = false; 
+  tft.fillScreen(TFT_BLACK);
+  
+  // 1. Draw Axes and Labels
+  tft.drawLine(20, 280, 220, 280, TFT_WHITE);     // X-Axis (Trials)
+  tft.drawLine(20, 280, 20, 50, TFT_WHITE);      // Y-Axis (Hits)
+  
+  // 50% Baseline (Middle)
+  tft.drawLine(20, 165, 220, 165, TFT_DARKGREY); 
+  
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE);
+  
+  // Y-Axis Labels for the new 30-70 range
+  tft.setCursor(25, 55);  tft.print(F("70%"));   // Top
+  tft.setCursor(25, 155); tft.print(F("50%"));   // Middle
+  tft.setCursor(25, 270); tft.print(F("30%"));   // Bottom
+
+  File data = SD.open(filename);
+  if (!data) return;
+
+  long totalH = 0;
+  int lastX = 20;
+  int lastY = 165; // Start visually at 50%
+
+  for (int i = 1; i <= total_trials; i++) {
+    data.parseInt(); // Skip Trial
+    data.parseInt(); // Skip S1
+    data.parseInt(); // Skip S2
+    int s3 = data.parseInt(); 
+
+    if (s3 == 1) totalH++;
+
+    float runningRate = (totalH * 100.0) / i;
+
+    // 2. Map Trial to X
+    int x = map(i, 1, total_trials, 20, 220);
+    
+    // 3. Map Percentage to Y (Zoomed to 30-70)
+    // Constrain prevents drawing outside the graph box if rate is <30 or >70
+    int constrainedRate = constrain((int)runningRate, 30, 70);
+    int y = map(constrainedRate, 30, 70, 280, 50);
+
+    // 4. Draw Trend Line
+    if (i > 1) {
+      tft.drawLine(lastX, lastY, x, y, TFT_YELLOW);
+    }
+    
+    lastX = x;
+    lastY = y;
+  }
+  data.close();
+
+  // Draw UI Buttons
+  tft.fillRect(resBtnX, resBtnY, resBtnW, resBtnH, TFT_DARKCYAN);
+  tft.drawRect(resBtnX, resBtnY, resBtnW, resBtnH, TFT_WHITE);
+  tft.setCursor(resBtnX + 15, resBtnY + 12);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(2);
+  tft.print(F("RESTART"));
+
+  tft.setCursor(20, 290);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_BLUE);
+  tft.print(F("Trend: ")); tft.print(filename);
+  
+  drawSummaryButton(); // Draw toggle button
+}
+
+
 
 void reboot() {
   wdt_enable(WDTO_15MS);
